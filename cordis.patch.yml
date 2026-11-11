@@ -1,0 +1,6 @@
+# dsh-session-rename-dblclick bundle patch: inserts the plugin row into the
+# profile roster. The node half serves POST /dsh-session-rename/rename; the
+# browser half installs the double-click editor on the two Session titles.
+- insert:
+    - id: session-rename-dblclick
+      name: 'dsh-session-rename-dblclick'

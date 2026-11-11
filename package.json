@@ -1,0 +1,53 @@
+{
+  "name": "dsh-session-rename-dblclick",
+  "version": "0.1.0",
+  "description": "双击重命名会话：侧边栏会话行与顶栏标题，双击就地改名，Enter 保存、Esc 取消。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "session",
+    "rename"
+  ],
+  "license": "MIT",
+  "author": "暮迟",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DDDMUC/dsh-session-rename-dblclick.git"
+  },
+  "homepage": "https://github.com/DDDMUC/dsh-session-rename-dblclick#readme",
+  "bugs": {
+    "url": "https://github.com/DDDMUC/dsh-session-rename-dblclick/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}
