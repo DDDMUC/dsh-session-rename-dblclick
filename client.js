@@ -30,7 +30,6 @@ window.__ModuleLoader__.load({
     const ROUTE = '/dsh-session-rename/rename'
     const MAX_TITLE = 200
     const STYLE_ATTR = 'data-dsh-session-rename'
-    const SESSION_IN_PATH = /\/session\/([^/?#]+)/
 
     const zh = typeof navigator !== 'undefined' && /^zh/i.test(navigator.language || '')
     const text = zh
@@ -164,21 +163,6 @@ window.__ModuleLoader__.load({
       return null
     }
 
-    /**
-     * The Session a sidebar row names.
-     *
-     * `data-row-key` first: current builds render the row as
-     * `<div role="treeitem" data-row-key="session:<id>">` with an onClick. The
-     * anchor this module used to require no longer exists, which made every
-     * double-click a silent no-op. The anchor stays as a fallback.
-     * @param {Element} row
-     * @returns {string | null}
-     */
-
-    function sessionIdFromHref(href) {
-      const match = href ? SESSION_IN_PATH.exec(href) : null
-      return match ? match[1] : null
-    }
 
     /**
      * Map a double-clicked node to the Session title it names.
