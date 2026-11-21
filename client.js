@@ -197,7 +197,7 @@ window.__ModuleLoader__.load({
       const crumb = el.closest('[class*="_crumbCurrent"]')
       if (crumb) {
         const sessionId = sessionIdForHeader(crumb)
-        return sessionId ? { sessionId, titleEl: crumb } : null
+        return sessionId ? { sessionId, titleEl: crumb, surface: 'header' } : null
       }
 
       // sidebar row: `data-row-key="session:<id>"` is the shipped contract.
@@ -209,7 +209,7 @@ window.__ModuleLoader__.load({
       const titleEl = el.closest('[class*="_title"]') || row.querySelector('[class*="_title"]')
       if (!titleEl || !row.contains(titleEl)) return null
       const sessionId = sessionIdOfRow(row)
-      return sessionId ? { sessionId, titleEl } : null
+      return sessionId ? { sessionId, titleEl, surface: 'row' } : null
     }
 
     // --- the in-place editor ---------------------------------------------------
@@ -395,6 +395,7 @@ window.__ModuleLoader__.load({
         lastClick = null
         return
       }
+      if (target.surface === 'header') return
       event.preventDefault()
       event.stopPropagation()
       openEditor(target)
@@ -406,6 +407,18 @@ window.__ModuleLoader__.load({
       const target = resolveTarget(event.target)
       if (!target) {
         lastClick = null
+        return
+      }
+      // The header title is a plain span: clicking it does nothing in the product, so
+      // ONE click opens the editor - that is what the reference implementation does
+      // (the box is always there, a click swaps its contents for an input). A sidebar
+      // row is different: clicking it opens the session, so it needs the deliberate
+      // second click.
+      if (target.surface === 'header') {
+        lastClick = null
+        event.preventDefault()
+        event.stopPropagation()
+        openEditor(target)
         return
       }
       const now = Date.now()
