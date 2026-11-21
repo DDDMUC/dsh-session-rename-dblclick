@@ -598,22 +598,21 @@ window.__ModuleLoader__.load({
 
     function onDoubleClick(event) {
       if (event.button !== 0) return
-      if (editor) return
       const target = resolveTarget(event.target)
       if (!target) {
         lastClick = null
         return
       }
-      if (target.surface === 'header') {
-        // The click already opened the editor. Swallow the double click anyway:
-        // otherwise the browser word-selects the title and leaves a blue band on the
-        // text, which is most of what made the header look broken.
-        event.preventDefault()
-        event.stopPropagation()
-        return
-      }
+      // Swallow the event BEFORE looking at whether our editor is up.
+      //
+      // The product opens ITS rename dialog on this same event (Rows.tsx:
+      // onDoubleClick -> onRenameRequest). Returning early whenever an editor existed
+      // let both run: the second click opened our inline input, then this double click
+      // reached the product and its modal appeared on top of it. For the header the
+      // same early return also let the browser word-select the title.
       event.preventDefault()
       event.stopPropagation()
+      if (editor) return
       openEditor(target)
     }
 
@@ -696,6 +695,6 @@ window.__ModuleLoader__.load({
 
     }
 
-    return { apply, __resolveTarget: resolveTarget, __sessionIdOfRow: sessionIdOfRow, __sessionIdForHeader: sessionIdForHeader, __openEditor: openEditor }
+    return { apply, __resolveTarget: resolveTarget, __sessionIdOfRow: sessionIdOfRow, __sessionIdForHeader: sessionIdForHeader, __openEditor: openEditor, __onDoubleClick: onDoubleClick }
   },
 })
