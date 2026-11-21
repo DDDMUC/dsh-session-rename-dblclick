@@ -376,8 +376,8 @@ window.__ModuleLoader__.load({
       ringEl.style.width = `${box.width}px`
       ringEl.style.height = `${box.height}px`
       ringEl.style.borderRadius = box.height >= 40 ? '22px' : `${Math.round(Math.min(22, box.height / 2))}px`
-      ringEl.style.borderColor = tokenOf(titleEl, '--dsw-alias-border-l2', 'color-mix(in srgb, currentColor 16%, transparent)')
-      ringEl.style.boxShadow = tokenOf(titleEl, '--dsw-shadow-lv2', '0 2px 8px 0 rgba(0, 0, 0, .04)')
+      ringEl.style.borderColor = resolveToken(titleEl, '--dsw-alias-border-l2', 'borderColor', 'rgba(0, 0, 0, 0.1)')
+      ringEl.style.boxShadow = resolveToken(titleEl, '--dsw-shadow-lv2', 'boxShadow', 'none')
       if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
         ringEl.style.color = window.getComputedStyle(titleEl).color
       }
@@ -399,13 +399,31 @@ window.__ModuleLoader__.load({
      * token from the title itself (inheritance resolves it there) and pin the result
      * inline.
      */
-    function tokenOf(el, name, fallback) {
+    function resolveToken(el, name, property, fallback) {
       if (typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return fallback
+      const host = el !== null && el !== undefined && el.parentElement ? el.parentElement : null
+      if (host === null) return fallback
+      let probe = null
       try {
-        const value = String(window.getComputedStyle(el).getPropertyValue(name) || '').trim()
-        return value.length > 0 ? value : fallback
+        // A token here can be another token: --dsw-alias-brand-primary is defined as
+        // var(--dsw-static-neutral-bluish-1000), so getPropertyValue returns that
+        // literal text, and writing it on an element outside the theme scope makes the
+        // declaration invalid (which silently falls back to currentColor - a black
+        // ring). The probe lives INSIDE the theme scope, so the browser resolves the
+        // whole chain and getComputedStyle hands back the final colour.
+        probe = document.createElement('span')
+        probe.setAttribute('aria-hidden', 'true')
+        probe.style.position = 'absolute'
+        probe.style.visibility = 'hidden'
+        probe.style.pointerEvents = 'none'
+        probe.style[property] = `var(${name}, ${fallback})`
+        host.appendChild(probe)
+        const value = window.getComputedStyle(probe)[property]
+        return typeof value === 'string' && value.length > 0 ? value : fallback
       } catch (error) {
         return fallback
+      } finally {
+        if (probe !== null && typeof probe.remove === 'function') probe.remove()
       }
     }
 
@@ -449,9 +467,13 @@ window.__ModuleLoader__.load({
       wrap.style.width = `${box.width}px`
       wrap.style.height = `${box.height}px`
       const font = pillFont(titleEl)
-      wrap.style.borderColor = tokenOf(titleEl, '--dsw-alias-brand-primary', '#4d6bfe')
-      wrap.style.background = tokenOf(titleEl, '--dsw-specific-input-major', tokenOf(titleEl, '--dsw-alias-bg-overlay', 'transparent'))
-      wrap.style.boxShadow = tokenOf(titleEl, '--dsw-shadow-lv2', '0 2px 8px 0 rgba(0, 0, 0, .04)')
+      // The reference field is a filled input whose focus ring is an INSET shadow, not a
+      // border: Input.module.css paints `inset 0 0 0 1px var(--dsw-alias-brand-primary)`.
+      // Same here, so the ring hugs the pill instead of growing it by a pixel.
+      const brand = resolveToken(titleEl, '--dsw-alias-brand-primary', 'borderColor', '#4d6bfe')
+      wrap.style.borderColor = 'transparent'
+      wrap.style.background = resolveToken(titleEl, '--dsw-specific-input-major', 'backgroundColor', 'transparent')
+      wrap.style.boxShadow = `inset 0 0 0 1px ${brand}`
       wrap.style.borderRadius = box.height >= 40 ? '22px' : `${Math.round(Math.min(22, box.height / 2))}px`
       wrap.style.padding = `${box.padY}px ${PAD_X}px`
       wrap.style.fontFamily = font.family
