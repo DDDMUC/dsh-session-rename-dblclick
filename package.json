@@ -1,7 +1,7 @@
 {
   "name": "dsh-session-rename-dblclick",
-  "version": "0.1.0",
-  "description": "双击重命名会话：侧边栏会话行与顶栏标题，双击就地改名，Enter 保存、Esc 取消。",
+  "version": "0.1.1",
+  "description": "就地重命名会话：顶栏标题单击、侧边栏会话行双击，原地换成输入框，Enter 保存、Esc 取消。",
   "type": "module",
   "main": "index.js",
   "exports": {
