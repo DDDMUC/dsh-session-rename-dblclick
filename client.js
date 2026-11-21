@@ -361,7 +361,9 @@ window.__ModuleLoader__.load({
       ringEl.style.width = `${box.width}px`
       ringEl.style.height = `${box.height}px`
       ringEl.style.borderRadius = `${Math.round(Math.min(22, box.height / 2))}px`
-      ringEl.style.color = window.getComputedStyle(titleEl).color
+      if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+        ringEl.style.color = window.getComputedStyle(titleEl).color
+      }
       ringEl.style.display = 'block'
       ringOwner = titleEl
     }
@@ -544,15 +546,22 @@ window.__ModuleLoader__.load({
         document.addEventListener('click', onClick, true)
         document.addEventListener('mouseover', onHover, true)
         document.addEventListener('mouseout', onOut, true)
-        window.addEventListener('scroll', hideRing, true)
-        window.addEventListener('resize', hideRing)
+        // Not every environment that runs this bundle has a window (the tests drive
+        // it under a bare document); the ring is repositioned on demand anyway.
+        const hasWindow = typeof window !== 'undefined' && typeof window.addEventListener === 'function'
+        if (hasWindow) {
+          window.addEventListener('scroll', hideRing, true)
+          window.addEventListener('resize', hideRing)
+        }
         return () => {
           document.removeEventListener('dblclick', onDoubleClick, true)
           document.removeEventListener('click', onClick, true)
           document.removeEventListener('mouseover', onHover, true)
           document.removeEventListener('mouseout', onOut, true)
-          window.removeEventListener('scroll', hideRing, true)
-          window.removeEventListener('resize', hideRing)
+          if (hasWindow) {
+            window.removeEventListener('scroll', hideRing, true)
+            window.removeEventListener('resize', hideRing)
+          }
           hideRing()
           lastClick = null
           finish()
