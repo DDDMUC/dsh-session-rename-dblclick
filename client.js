@@ -594,6 +594,88 @@ window.__ModuleLoader__.load({
       hideRing()
     }
 
+    // --- sidebar row click gate ------------------------------------------------
+    //
+    // The product navigates on `click` (Rows.tsx: onClick -> onOpen) and only opens its
+    // rename dialog on the `dblclick` that follows the second click. A fast double click
+    // therefore switches the session before the dialog appears. One click cannot know
+    // whether a second is coming, so the first click is held briefly: if another arrives
+    // within HOLD_MS both are swallowed (the product's own dblclick still opens its
+    // dialog), otherwise the click is replayed so the session opens as usual.
+    const HOLD_MS = 200
+    let heldClick = null
+    let replaying = false
+
+    function rowOfNode(node) {
+      const el = elementOf(node)
+      if (!el || typeof el.closest !== 'function') return null
+      return el.closest('[class*="_sessionRow"], [data-row-key^="session:"]')
+    }
+
+    function isRowSelected(row) {
+      const name = row && typeof row.className === 'string' ? row.className : ''
+      return /(^|\s)[A-Za-z0-9_-]*_selected(\s|$)/.test(name)
+    }
+
+    function releaseHeldClick() {
+      if (heldClick === null) return null
+      const held = heldClick
+      heldClick = null
+      if (held.timer !== null && typeof clearTimeout === 'function') clearTimeout(held.timer)
+      return held
+    }
+
+    function replayClick(held) {
+      const row = held.row
+      if (!row || row.isConnected === false) return
+      let event = null
+      try {
+        const view = typeof window === 'undefined' ? null : window
+        event = new MouseEvent('click', { bubbles: true, cancelable: true, view, detail: 1, clientX: held.x, clientY: held.y })
+      } catch (error) {
+        event = null
+      }
+      if (event === null || typeof row.dispatchEvent !== 'function') return
+      replaying = true
+      try {
+        row.dispatchEvent(event)
+      } finally {
+        replaying = false
+      }
+    }
+
+    function onRowClick(event) {
+      if (replaying) return
+      if (event.button !== 0) return
+      if (event.detail === 0) return
+      const row = rowOfNode(event.target)
+      if (row === null) return
+      const el = elementOf(event.target)
+      const titleEl = el && typeof el.closest === 'function' ? el.closest('[class*="_title"]') : null
+      if (titleEl === null || titleEl === undefined || typeof row.contains !== 'function' || !row.contains(titleEl)) return
+      if (isRowSelected(row)) return
+      if (event.detail >= 2) {
+        if (heldClick !== null && heldClick.row === row) {
+          releaseHeldClick()
+          event.preventDefault()
+          event.stopPropagation()
+        }
+        return
+      }
+      const previous = releaseHeldClick()
+      if (previous !== null) replayClick(previous)
+      event.preventDefault()
+      event.stopPropagation()
+      heldClick = {
+        row,
+        x: event.clientX,
+        y: event.clientY,
+        timer: typeof setTimeout === 'function' ? setTimeout(() => {
+          const held = releaseHeldClick()
+          if (held !== null) replayClick(held)
+        }, HOLD_MS) : null,
+      }
+    }
     function onClick(event) {
       if (event.button !== 0) return
       if (editor !== null) return
@@ -618,6 +700,7 @@ window.__ModuleLoader__.load({
       console.info('[dsh-session-rename-dblclick] ready — click the header title to rename')
       const install = () => {
         document.addEventListener('click', onClick, true)
+        document.addEventListener('click', onRowClick, true)
         document.addEventListener('mouseover', onHover, true)
         document.addEventListener('mouseout', onOut, true)
         // Not every environment that runs this bundle has a window (the tests drive
@@ -629,6 +712,8 @@ window.__ModuleLoader__.load({
         }
         return () => {
           document.removeEventListener('click', onClick, true)
+          document.removeEventListener('click', onRowClick, true)
+          releaseHeldClick()
           document.removeEventListener('mouseover', onHover, true)
           document.removeEventListener('mouseout', onOut, true)
           if (hasWindow) {
