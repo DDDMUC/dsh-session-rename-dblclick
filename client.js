@@ -316,8 +316,15 @@ window.__ModuleLoader__.load({
     // A 40px pill with a 22px radius is not the same thing: CSS scales both radii by
     // 40/44, so the caps come out at 20px and read a touch tighter at both ends. That
     // is the difference one sees when the two are put side by side.
-    const PILL_HEIGHT = 44
+    const PILL_HEIGHT = 40
     const PILL_RADIUS = 22
+    // The product EDIT state is a .ds-input with its own numbers (main.76bb554586.css):
+    //   .ds-input{border-radius:22px; padding:0 14px; height:var(--dsl-input-height);
+    //             background-color:var(--dsl-input-color); display:flex; border:none}
+    //   .ds-input--l{--dsl-input-height:var(--ds-control-height-l)}  -> 40px
+    //   --dsl-input-color: var(--dsw-specific-selector)              -> #f1f3f5
+    const FIELD_PAD_X = 14
+    const FIELD_BORDER = 0
 
     /**
      * The pill that the editor and the hover ring both draw.
@@ -349,27 +356,31 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function boxOf(titleEl, title, surface) {
+    function boxOf(titleEl, title, surface, spec) {
+      const padX = spec !== undefined && spec !== null && spec.padX !== undefined ? spec.padX : PAD_X
+      const border = spec !== undefined && spec !== null && spec.border !== undefined ? spec.border : BORDER
       const rect = titleEl.getBoundingClientRect()
       const font = pillFont(titleEl)
       const metrics = measureText(titleEl, title, font)
       const contentHeight = Math.max(14, Math.round(font.lineHeight))
       // Padding is computed from the BORDER as well, so the box lands on the target
       // height instead of target + 2.
-      const target = surface === 'header' ? PILL_HEIGHT : contentHeight + 8
-      const padY = Math.max(2, Math.min(12, Math.round((target - contentHeight) / 2) - BORDER))
+      const target = surface === 'header' ? (spec !== undefined && spec !== null && spec.height !== undefined ? spec.height : PILL_HEIGHT) : contentHeight + 8
+      const padY = Math.max(2, Math.min(12, Math.round((target - contentHeight) / 2) - border))
       const contentLeft = rect.left + metrics.padLeft
       const contentTop = rect.top + metrics.padTop
-      const room = typeof window === 'undefined' ? 0 : window.innerWidth - (contentLeft - (BORDER + PAD_X)) - 8
+      const room = typeof window === 'undefined' ? 0 : window.innerWidth - (contentLeft - (border + padX)) - 8
       const wanted = Math.max(metrics.width + 2, 24)
-      const maxContent = Math.max(24, room - 2 * (BORDER + PAD_X))
+      const maxContent = Math.max(24, room - 2 * (border + padX))
       const contentWidth = Math.round(Math.min(wanted, maxContent))
       return {
-        left: Math.round(contentLeft - (BORDER + PAD_X)),
-        top: Math.round(contentTop - (BORDER + padY)),
-        width: contentWidth + 2 * (BORDER + PAD_X),
-        height: contentHeight + 2 * (BORDER + padY),
+        left: Math.round(contentLeft - (border + padX)),
+        top: Math.round(contentTop - (border + padY)),
+        width: contentWidth + 2 * (border + padX),
+        height: contentHeight + 2 * (border + padY),
         padY,
+        padX,
+        border,
         contentHeight,
       }
     }
@@ -477,7 +488,7 @@ window.__ModuleLoader__.load({
       hideRing()
       // The hover ring has just drawn this exact pill, so entering the editor is a
       // change of colour, not of geometry.
-      const box = boxOf(titleEl, title, target.surface)
+      const box = boxOf(titleEl, title, target.surface, { padX: FIELD_PAD_X, border: FIELD_BORDER })
       // Declared before the log that prints it: the previous revision logged `brand`
       // while its const sat further down, which threw a temporal-dead-zone error inside
       // openEditor AFTER the click was already swallowed - so a click did nothing at all.
@@ -517,10 +528,11 @@ window.__ModuleLoader__.load({
       // paints `inset 0 0 0 1px var(--dsw-alias-brand-primary)`. Same here, so the ring
       // hugs the pill instead of growing it by a pixel.
       wrap.style.borderColor = 'transparent'
-      wrap.style.background = resolveToken(titleEl, '--dsw-specific-input-major', 'backgroundColor', 'transparent')
+      wrap.style.background = resolveToken(titleEl, '--dsw-specific-selector', 'backgroundColor', '#f1f3f5')
+      wrap.style.borderWidth = box.border + 'px'
       wrap.style.boxShadow = `inset 0 0 0 1px ${brand}`
       wrap.style.borderRadius = `${Math.round(Math.min(PILL_RADIUS, box.height / 2))}px`
-      wrap.style.padding = `${box.padY}px ${PAD_X}px`
+      wrap.style.padding = `${box.padY}px ${box.padX}px`
       wrap.style.fontFamily = font.family
       wrap.style.fontSize = `${font.size}px`
       wrap.style.fontWeight = font.weight
