@@ -63,18 +63,35 @@ window.__ModuleLoader__.load({
           margin: 0; border: 1px solid transparent; background: transparent;
           box-shadow: none; transition: none;
         }
+        /* Editing: the same pill, now wearing the brand ring - that is how the
+           reference paints its focused field. The interior stays transparent so
+           no colour is invented on top of the host theme. */
         .dsr-wrap[data-editing='true'] {
-          border-color: color-mix(in srgb, currentColor 14%, transparent);
-          background: color-mix(in srgb, currentColor 3%, transparent);
-          box-shadow: 0 4px 12px 0 rgba(0, 0, 0, .02), 0 2px 8px 0 rgba(0, 0, 0, .04);
+          border-color: var(--dsw-alias-brand-primary, color-mix(in srgb, currentColor 65%, transparent));
+          background: transparent;
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-brand-primary, #4d6bfe) 12%, transparent);
         }
         @media (prefers-color-scheme: dark) {
           .dsr-wrap[data-editing='true'] {
-            border-color: color-mix(in srgb, currentColor 26%, transparent);
-            background: color-mix(in srgb, currentColor 7%, transparent);
             box-shadow: none;
           }
         }
+        /*
+         * Idle affordance: the same pill outline, painted by a pseudo-element with
+         * negative insets so it costs no layout and cannot shift the header. The
+         * class sits on the title; :hover decides when the ring shows. */
+        .dsr-hoverable { position: relative; }
+        .dsr-hoverable::after {
+          content: ''; position: absolute; pointer-events: none;
+          left: -13px; right: -13px; top: -9px; bottom: -9px;
+          border-radius: 22px; border: 1px solid transparent;
+          transition: border-color 120ms ease, box-shadow 120ms ease;
+        }
+        .dsr-hoverable:hover::after {
+          border-color: color-mix(in srgb, currentColor 16%, transparent);
+          box-shadow: 0 2px 8px 0 rgba(0, 0, 0, .04);
+        }
+        .dsr-hoverable:hover { cursor: text; }
         .dsr-input {
           display: block; width: 100%; box-sizing: border-box;
           margin: 0; padding: 0; border: 0; outline: none;
@@ -387,6 +404,22 @@ window.__ModuleLoader__.load({
     const DOUBLE_PX = 8
     let lastClick = null
 
+    /**
+     * Mark a header title as hoverable, so its idle ring can appear.
+     *
+     * The ring is pure CSS (a pseudo-element with negative insets: no layout, no
+     * shift of the header). React replaces the node on re-render, which drops the
+     * class, so the mark is re-applied on every hover instead of once at startup.
+     */
+    function onHover(event) {
+      if (editor) return
+      const target = resolveTarget(event.target)
+      if (!target || target.surface !== 'header') return
+      const list = target.titleEl.classList
+      if (list === null || list === undefined || typeof list.add !== 'function') return
+      if (!list.contains('dsr-hoverable')) list.add('dsr-hoverable')
+    }
+
     function onDoubleClick(event) {
       if (event.button !== 0) return
       if (editor) return
@@ -451,9 +484,11 @@ window.__ModuleLoader__.load({
       const install = () => {
         document.addEventListener('dblclick', onDoubleClick, true)
         document.addEventListener('click', onClick, true)
+        document.addEventListener('mouseover', onHover, true)
         return () => {
           document.removeEventListener('dblclick', onDoubleClick, true)
           document.removeEventListener('click', onClick, true)
+          document.removeEventListener('mouseover', onHover, true)
           lastClick = null
           finish()
           if (typeof window !== 'undefined') window.__DSH_SESSION_RENAME__ = false
