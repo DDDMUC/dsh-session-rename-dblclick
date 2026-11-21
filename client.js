@@ -376,8 +376,8 @@ window.__ModuleLoader__.load({
       ringEl.style.width = `${box.width}px`
       ringEl.style.height = `${box.height}px`
       ringEl.style.borderRadius = box.height >= 40 ? '22px' : `${Math.round(Math.min(22, box.height / 2))}px`
-      ringEl.style.borderColor = tokenOf(titleEl, '--dsw-alias-border-l2', 'color-mix(in srgb, currentColor 16%, transparent)')
-      ringEl.style.boxShadow = tokenOf(titleEl, '--dsw-shadow-lv2', '0 2px 8px 0 rgba(0, 0, 0, .04)')
+      ringEl.style.borderColor = resolveToken(titleEl, '--dsw-alias-border-l2', 'borderColor', 'rgba(0, 0, 0, 0.1)')
+      ringEl.style.boxShadow = resolveToken(titleEl, '--dsw-shadow-lv2', 'boxShadow', 'none')
       if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
         ringEl.style.color = window.getComputedStyle(titleEl).color
       }
@@ -399,14 +399,56 @@ window.__ModuleLoader__.load({
      * token from the title itself (inheritance resolves it there) and pin the result
      * inline.
      */
-    function tokenOf(el, name, fallback) {
+    function resolveToken(el, name, property, fallback) {
       if (typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return fallback
+      const host = el !== null && el !== undefined && el.parentElement ? el.parentElement : null
+      if (host === null) return fallback
+      let probe = null
       try {
-        const value = String(window.getComputedStyle(el).getPropertyValue(name) || '').trim()
-        return value.length > 0 ? value : fallback
+        // A token may point at another token: --dsw-alias-brand-primary is
+        // var(--dsw-static-neutral-bluish-1000), so getPropertyValue hands back that
+        // literal text, and writing it on an element outside the theme scope makes the
+        // declaration invalid (which quietly falls back to currentColor). The probe sits
+        // INSIDE the theme scope, so the browser resolves the whole chain.
+        probe = document.createElement('span')
+        probe.setAttribute('aria-hidden', 'true')
+        probe.style.position = 'absolute'
+        probe.style.visibility = 'hidden'
+        probe.style.pointerEvents = 'none'
+        probe.style[property] = `var(${name}, ${fallback})`
+        host.appendChild(probe)
+        const value = window.getComputedStyle(probe)[property]
+        return typeof value === 'string' && value.length > 0 ? value : fallback
       } catch (error) {
         return fallback
+      } finally {
+        if (probe !== null && typeof probe.remove === 'function') probe.remove()
       }
+    }
+
+    /**
+     * The reference brand blue, exactly as the demo paints it.
+     *
+     * --dsw-alias-brand-primary is NOT used on purpose: both themes name it and give it
+     * different values. The demo maps it to its deepseek blue (#3964fe light, #5686fe
+     * dark); DSH maps it to a neutral (rgb(15, 17, 21)) because black is the accent of
+     * its shell. Copying the token name therefore paints a black ring in DSH.
+     */
+    const REFERENCE_BRAND = { light: '#3964fe', dark: '#5686fe' }
+
+    /** Rough luminance of a computed colour, or null when it cannot be parsed. */
+    function luminanceOf(color) {
+      const match = /rgba?\(([^)]+)\)/.exec(String(color))
+      if (match === null) return null
+      const parts = match[1].split(',').map((value) => parseFloat(value))
+      if (parts.length < 3) return null
+      return (0.299 * parts[0] + 0.587 * parts[1] + 0.114 * parts[2]) / 255
+    }
+
+    /** Which reference blue: the label colour (text) tells us whether the theme is dark. */
+    function referenceBrand(titleEl) {
+      const label = luminanceOf(resolveToken(titleEl, '--dsw-alias-label-primary', 'color', ''))
+      return label !== null && label > 0.5 ? REFERENCE_BRAND.dark : REFERENCE_BRAND.light
     }
 
     function openEditor(target) {
@@ -419,6 +461,10 @@ window.__ModuleLoader__.load({
       // The hover ring has just drawn this exact pill, so entering the editor is a
       // change of colour, not of geometry.
       const box = boxOf(titleEl, title, target.surface)
+      // Declared before the log that prints it: the previous revision logged `brand`
+      // while its const sat further down, which threw a temporal-dead-zone error inside
+      // openEditor AFTER the click was already swallowed - so a click did nothing at all.
+      const brand = referenceBrand(titleEl)
       // A double click (or a drag) leaves a text selection on the title; the editor
       // shows its own selection, so drop the old one instead of stacking two bands.
       if (typeof window !== 'undefined' && typeof window.getSelection === 'function') {
@@ -438,6 +484,7 @@ window.__ModuleLoader__.load({
         padY: box.padY,
         contentHeight: box.contentHeight,
         font: pillFont(titleEl),
+        brand,
         title: rect.width + 'x' + rect.height,
       })
 
@@ -449,9 +496,12 @@ window.__ModuleLoader__.load({
       wrap.style.width = `${box.width}px`
       wrap.style.height = `${box.height}px`
       const font = pillFont(titleEl)
-      wrap.style.borderColor = tokenOf(titleEl, '--dsw-alias-brand-primary', '#4d6bfe')
-      wrap.style.background = tokenOf(titleEl, '--dsw-specific-input-major', tokenOf(titleEl, '--dsw-alias-bg-overlay', 'transparent'))
-      wrap.style.boxShadow = tokenOf(titleEl, '--dsw-shadow-lv2', '0 2px 8px 0 rgba(0, 0, 0, .04)')
+      // The reference focus ring is an inset shadow, not a border: Input.module.css
+      // paints `inset 0 0 0 1px var(--dsw-alias-brand-primary)`. Same here, so the ring
+      // hugs the pill instead of growing it by a pixel.
+      wrap.style.borderColor = 'transparent'
+      wrap.style.background = resolveToken(titleEl, '--dsw-specific-input-major', 'backgroundColor', 'transparent')
+      wrap.style.boxShadow = `inset 0 0 0 1px ${brand}`
       wrap.style.borderRadius = box.height >= 40 ? '22px' : `${Math.round(Math.min(22, box.height / 2))}px`
       wrap.style.padding = `${box.padY}px ${PAD_X}px`
       wrap.style.fontFamily = font.family
@@ -497,11 +547,14 @@ window.__ModuleLoader__.load({
 
       document.body.appendChild(wrap)
       titleEl.style.visibility = 'hidden'
-      requestAnimationFrame(() => {
+      const focusNow = () => {
         if (state.closed) return
         input.focus({ preventScroll: true })
         input.select()
-      })
+      }
+      // Next frame when there is one (some hosts without a window still run this code).
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focusNow)
+      else focusNow()
     }
 
     // --- listener --------------------------------------------------------------
@@ -643,6 +696,6 @@ window.__ModuleLoader__.load({
 
     }
 
-    return { apply, __resolveTarget: resolveTarget, __sessionIdOfRow: sessionIdOfRow, __sessionIdForHeader: sessionIdForHeader }
+    return { apply, __resolveTarget: resolveTarget, __sessionIdOfRow: sessionIdOfRow, __sessionIdForHeader: sessionIdForHeader, __openEditor: openEditor }
   },
 })
