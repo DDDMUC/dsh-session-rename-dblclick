@@ -236,18 +236,34 @@ window.__ModuleLoader__.load({
       const family = font !== undefined && font !== null ? font.family : cs.fontFamily
       const lineHeight = font !== undefined && font !== null ? font.lineHeight : parseFloat(cs.lineHeight) || Math.round(size * 1.35)
       const style = font !== undefined && font !== null ? font.style : cs.fontStyle
+      const spacing = font !== undefined && font !== null ? font.letterSpacing : cs.letterSpacing
+      // Measure with a REAL element, not canvas metrics.
+      //
+      // Canvas measureText and the layout engine disagree by a pixel or two per CJK
+      // string, so a canvas-measured pill came out ~2px wider than the text it hugs.
+      // The reference is `width: fit-content`, i.e. whatever layout says, so ask layout.
       let width = 0
+      let probe = null
       try {
-        if (!measureText.canvas) measureText.canvas = document.createElement('canvas')
-        const context = measureText.canvas.getContext('2d')
-        context.font = `${style} ${weight} ${size}px ${family}`
-        width = context.measureText(text).width
-      } catch {
+        probe = document.createElement('span')
+        probe.textContent = text
+        probe.setAttribute('aria-hidden', 'true')
+        probe.style.position = 'absolute'
+        probe.style.visibility = 'hidden'
+        probe.style.pointerEvents = 'none'
+        probe.style.whiteSpace = 'pre'
+        probe.style.font = `${style} ${weight} ${size}px ${family}`
+        probe.style.lineHeight = `${lineHeight}px`
+        probe.style.letterSpacing = spacing
+        const host = el !== null && el !== undefined && el.parentElement !== null && el.parentElement !== undefined ? el.parentElement : document.body
+        host.appendChild(probe)
+        width = probe.getBoundingClientRect().width
+      } catch (error) {
         width = 0
+      } finally {
+        if (probe !== null && typeof probe.remove === 'function') probe.remove()
       }
       if (!width) width = text.length * size * 0.62
-      const spacing = parseFloat(cs.letterSpacing)
-      if (Number.isFinite(spacing) && spacing !== 0) width += spacing * Math.max(text.length - 1, 0)
       return { width, height: lineHeight, padLeft: parseFloat(cs.paddingLeft) || 0, padTop: parseFloat(cs.paddingTop) || 0 }
     }
 
