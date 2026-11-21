@@ -603,13 +603,18 @@ window.__ModuleLoader__.load({
         lastClick = null
         return
       }
-      // Swallow the event BEFORE looking at whether our editor is up.
-      //
-      // The product opens ITS rename dialog on this same event (Rows.tsx:
-      // onDoubleClick -> onRenameRequest). Returning early whenever an editor existed
-      // let both run: the second click opened our inline input, then this double click
-      // reached the product and its modal appeared on top of it. For the header the
-      // same early return also let the browser word-select the title.
+      if (target.surface === 'header') {
+        // Leave the event alone. The current crumb is a plain <span> with no handler of
+        // its own (only ancestor crumbs are buttons, and those are not this node), so
+        // there is nothing to defend against - and swallowing it took away the native
+        // "double click selects a word" inside our own input, which is exactly what one
+        // wants while renaming.
+        if (editor === null) openEditor(target)
+        return
+      }
+      // A row is different: the product opens ITS rename dialog on this same event
+      // (Rows.tsx: onDoubleClick -> onRenameRequest). Swallow it whether or not our
+      // editor is up, otherwise the stock modal lands on top of our input.
       event.preventDefault()
       event.stopPropagation()
       if (editor) return
