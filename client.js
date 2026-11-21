@@ -77,21 +77,24 @@ window.__ModuleLoader__.load({
           }
         }
         /*
-         * Idle affordance: the same pill outline, painted by a pseudo-element with
-         * negative insets so it costs no layout and cannot shift the header. The
-         * class sits on the title; :hover decides when the ring shows. */
-        .dsr-hoverable { position: relative; }
-        .dsr-hoverable::after {
-          content: ''; position: absolute; pointer-events: none;
-          left: -13px; right: -13px; top: -9px; bottom: -9px;
-          border-radius: 22px; border: 1px solid transparent;
-          transition: border-color 120ms ease, box-shadow 120ms ease;
-        }
-        .dsr-hoverable:hover::after {
-          border-color: color-mix(in srgb, currentColor 16%, transparent);
+         * Idle affordance. It CANNOT be a pseudo-element on the title: the product's
+         * crumb is display:inline-block with overflow hidden, so anything drawn outside
+         * its box is clipped away. So the ring is its own fixed overlay, positioned
+         * with exactly the same maths as the editor - hovering previews the box that
+         * is about to appear.
+         */
+        .dsr-ring {
+          position: fixed; z-index: 2147482999; display: none; box-sizing: border-box;
+          pointer-events: none;
+          border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
           box-shadow: 0 2px 8px 0 rgba(0, 0, 0, .04);
         }
-        .dsr-hoverable:hover { cursor: text; }
+        @media (prefers-color-scheme: dark) {
+          .dsr-ring {
+            border-color: color-mix(in srgb, currentColor 28%, transparent);
+            box-shadow: none;
+          }
+        }
         .dsr-input {
           display: block; width: 100%; box-sizing: border-box;
           margin: 0; padding: 0; border: 0; outline: none;
@@ -262,7 +265,7 @@ window.__ModuleLoader__.load({
       if (!width) width = text.length * fontSize * 0.62
       const spacing = parseFloat(cs.letterSpacing)
       if (Number.isFinite(spacing) && spacing !== 0) width += spacing * Math.max(text.length - 1, 0)
-      return { width, height: lineHeight, padLeft: parseFloat(cs.paddingLeft) || 0 }
+      return { width, height: lineHeight, padLeft: parseFloat(cs.paddingLeft) || 0, padTop: parseFloat(cs.paddingTop) || 0 }
     }
 
     /** Close the editor and restore the title it covered. Idempotent. */
@@ -305,49 +308,91 @@ window.__ModuleLoader__.load({
       }
     }
 
+    const BORDER = 1
+    const PAD_X = 12
+
+    /**
+     * The pill that the editor and the hover ring both draw.
+     *
+     * Content is the TITLE LINE BOX, not its border box: the crumb carries its own
+     * 4px padding, and measuring from the text is what keeps the glyphs still. The
+     * header targets the product pill (40px); a sidebar row targets its own height so
+     * the box cannot spill onto its neighbours.
+     * @returns {{ left: number, top: number, width: number, height: number, padY: number }}
+     */
+    function boxOf(titleEl, title, surface) {
+      const rect = titleEl.getBoundingClientRect()
+      const metrics = measureText(titleEl, title)
+      const contentHeight = Math.max(14, Math.round(metrics.height))
+      const target = surface === 'header' ? 40 : contentHeight + 8
+      const padY = Math.max(2, Math.min(12, Math.round((target - contentHeight) / 2)))
+      const contentLeft = rect.left + metrics.padLeft
+      const contentTop = rect.top + metrics.padTop
+      const room = typeof window === 'undefined' ? 0 : window.innerWidth - (contentLeft - (BORDER + PAD_X)) - 8
+      const wanted = Math.max(metrics.width + 2, 24)
+      const maxContent = Math.max(24, room - 2 * (BORDER + PAD_X))
+      const contentWidth = Math.round(Math.min(wanted, maxContent))
+      return {
+        left: Math.round(contentLeft - (BORDER + PAD_X)),
+        top: Math.round(contentTop - (BORDER + padY)),
+        width: contentWidth + 2 * (BORDER + PAD_X),
+        height: contentHeight + 2 * (BORDER + padY),
+        padY,
+        contentHeight,
+      }
+    }
+
+    let ringEl = null
+    let ringOwner = null
+
+    /** Show the hover ring around a header title, in the editor's own geometry. */
+    function showRing(titleEl) {
+      if (editor !== null) return
+      const title = (titleEl.textContent || '').trim()
+      const box = boxOf(titleEl, title, 'header')
+      if (box.width < 24 || box.height < 14) return
+      if (ringEl === null) {
+        ringEl = document.createElement('div')
+        ringEl.className = 'dsr-ring'
+        document.body.appendChild(ringEl)
+      }
+      ringEl.style.left = `${box.left}px`
+      ringEl.style.top = `${box.top}px`
+      ringEl.style.width = `${box.width}px`
+      ringEl.style.height = `${box.height}px`
+      ringEl.style.borderRadius = `${Math.round(Math.min(22, box.height / 2))}px`
+      ringEl.style.color = window.getComputedStyle(titleEl).color
+      ringEl.style.display = 'block'
+      ringOwner = titleEl
+    }
+
+    function hideRing() {
+      ringOwner = null
+      if (ringEl !== null) ringEl.style.display = 'none'
+    }
+
     function openEditor(target) {
       finish()
       const { sessionId, titleEl } = target
       const title = (titleEl.textContent || '').trim()
       const rect = titleEl.getBoundingClientRect()
       if (rect.width < 8 || rect.height < 8) return
-
-      // The box is the title's line box plus its own padding, drawn OUTSIDE the
-      // glyphs: border + padding are subtracted from the anchor, so the text does
-      // not shift by a pixel when the box appears. Idle states draw nothing (no
-      // permanent frame around a plain title); only the editing state is visible.
-      const BORDER = 1
-      const PAD_X = 12
-      const metrics = measureText(titleEl, title)
-      const contentHeight = Math.max(14, Math.round(rect.height || metrics.height))
-      // 8px of vertical padding is the product shape: a 40px box over a 22px line.
-      // A compact surface (a sidebar row is ~28px tall) keeps its box inside the row
-      // instead of spilling over its neighbours; the offset below always equals the
-      // padding, so the text does not move in either case.
-      const padY = contentHeight >= 22 ? 8 : contentHeight >= 18 ? 4 : 3
-      const boxLeft = Math.round(rect.left + metrics.padLeft - (BORDER + PAD_X))
-      const boxTop = Math.round(rect.top - (BORDER + padY))
-      const boxHeight = contentHeight + 2 * (BORDER + padY)
-      const room = typeof window === 'undefined' ? 0 : window.innerWidth - boxLeft - 8
-      // The input must be wide enough for the glyphs (its default ~20ch would jump
-      // the box wider than the text); +2px leaves the caret somewhere to sit.
-      const wantedContent = Math.max(metrics.width + 2, 24)
-      const maxContent = Math.max(24, room - 2 * (BORDER + PAD_X))
-      const contentWidth = Math.round(Math.min(wantedContent, maxContent))
-      const boxWidth = contentWidth + 2 * (BORDER + PAD_X)
+      hideRing()
+      // The hover ring has just drawn this exact pill, so entering the editor is a
+      // change of colour, not of geometry.
+      const box = boxOf(titleEl, title, target.surface)
 
       const wrap = document.createElement('div')
       wrap.className = 'dsr-wrap'
       wrap.dataset.editing = 'true'
-      wrap.style.left = `${boxLeft}px`
-      wrap.style.top = `${boxTop}px`
-      wrap.style.width = `${boxWidth}px`
-      wrap.style.height = `${boxHeight}px`
-      wrap.style.borderRadius = `${Math.round(Math.min(22, boxHeight / 2))}px`
-      wrap.style.padding = `${padY}px ${PAD_X}px`
+      wrap.style.left = `${box.left}px`
+      wrap.style.top = `${box.top}px`
+      wrap.style.width = `${box.width}px`
+      wrap.style.height = `${box.height}px`
+      wrap.style.borderRadius = `${Math.round(Math.min(22, box.height / 2))}px`
+      wrap.style.padding = `${box.padY}px ${PAD_X}px`
       copyFont(titleEl, wrap)
-      wrap.style.lineHeight = `${contentHeight}px`
-      wrap.style.height = `${boxHeight}px`
+      wrap.style.lineHeight = `${box.contentHeight}px`
 
       const input = document.createElement('input')
       input.className = 'dsr-input'
@@ -405,19 +450,32 @@ window.__ModuleLoader__.load({
     let lastClick = null
 
     /**
-     * Mark a header title as hoverable, so its idle ring can appear.
+     * The header title a hover is over, or null.
      *
-     * The ring is pure CSS (a pseudo-element with negative insets: no layout, no
-     * shift of the header). React replaces the node on re-render, which drops the
-     * class, so the mark is re-applied on every hover instead of once at startup.
+     * Deliberately does NOT resolve the session: showing a ring must not depend on the
+     * id being unambiguous, or hovering would silently do nothing exactly when two
+     * conversations are on screen.
      */
+    function headerTitleOf(node) {
+      const el = elementOf(node)
+      if (!el || typeof el.closest !== 'function') return null
+      if (el.closest('input, textarea, [contenteditable="true"]')) return null
+      return el.closest('[class*="_crumbCurrent"]')
+    }
+
+    /** Draw the pill that a click is about to open. */
     function onHover(event) {
       if (editor) return
-      const target = resolveTarget(event.target)
-      if (!target || target.surface !== 'header') return
-      const list = target.titleEl.classList
-      if (list === null || list === undefined || typeof list.add !== 'function') return
-      if (!list.contains('dsr-hoverable')) list.add('dsr-hoverable')
+      const owner = headerTitleOf(event.target)
+      if (owner === null || owner === undefined) return
+      if (owner !== ringOwner) showRing(owner)
+    }
+
+    function onOut(event) {
+      if (ringOwner === null) return
+      const next = event.relatedTarget
+      if (next !== null && next !== undefined && typeof ringOwner.contains === 'function' && ringOwner.contains(next)) return
+      hideRing()
     }
 
     function onDoubleClick(event) {
@@ -485,10 +543,17 @@ window.__ModuleLoader__.load({
         document.addEventListener('dblclick', onDoubleClick, true)
         document.addEventListener('click', onClick, true)
         document.addEventListener('mouseover', onHover, true)
+        document.addEventListener('mouseout', onOut, true)
+        window.addEventListener('scroll', hideRing, true)
+        window.addEventListener('resize', hideRing)
         return () => {
           document.removeEventListener('dblclick', onDoubleClick, true)
           document.removeEventListener('click', onClick, true)
           document.removeEventListener('mouseover', onHover, true)
+          document.removeEventListener('mouseout', onOut, true)
+          window.removeEventListener('scroll', hideRing, true)
+          window.removeEventListener('resize', hideRing)
+          hideRing()
           lastClick = null
           finish()
           if (typeof window !== 'undefined') window.__DSH_SESSION_RENAME__ = false
