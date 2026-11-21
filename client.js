@@ -67,14 +67,11 @@ window.__ModuleLoader__.load({
            reference paints its focused field. The interior stays transparent so
            no colour is invented on top of the host theme. */
         .dsr-wrap[data-editing='true'] {
-          border-color: var(--dsw-alias-brand-primary, color-mix(in srgb, currentColor 65%, transparent));
-          background: transparent;
-          box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-brand-primary, #4d6bfe) 12%, transparent);
-        }
-        @media (prefers-color-scheme: dark) {
-          .dsr-wrap[data-editing='true'] {
-            box-shadow: none;
-          }
+          border-color: var(--dsw-alias-brand-primary, #4d6bfe);
+          /* The reference field is FILLED (it wears the input token), not a hole cut
+             in the header - that fill is most of why its edit state reads as a field. */
+          background: var(--dsw-specific-input-major, var(--dsw-alias-bg-overlay, #ffffff));
+          box-shadow: var(--dsw-shadow-lv2, 0 2px 8px 0 rgba(0, 0, 0, .04));
         }
         /*
          * Idle affordance. It CANNOT be a pseudo-element on the title: the product's
@@ -85,15 +82,14 @@ window.__ModuleLoader__.load({
          */
         .dsr-ring {
           position: fixed; z-index: 2147482999; display: none; box-sizing: border-box;
-          pointer-events: none;
-          border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
-          box-shadow: 0 2px 8px 0 rgba(0, 0, 0, .04);
-        }
-        @media (prefers-color-scheme: dark) {
-          .dsr-ring {
-            border-color: color-mix(in srgb, currentColor 28%, transparent);
-            box-shadow: none;
-          }
+          pointer-events: none; background: transparent;
+          /* The reference paints its hover pill with the host tokens; hand-rolled rgba
+             never matches a themed build. */
+          border: 1px solid var(--dsw-alias-border-l2, color-mix(in srgb, currentColor 16%, transparent));
+          box-shadow: var(--dsw-shadow-lv2, 0 2px 8px 0 rgba(0, 0, 0, .04));
+          transition:
+            border-color var(--ds-transition-duration, 120ms) var(--ds-ease-in-out, ease),
+            box-shadow var(--ds-transition-duration, 120ms) var(--ds-ease-in-out, ease);
         }
         .dsr-input {
           display: block; width: 100%; box-sizing: border-box;
@@ -249,20 +245,22 @@ window.__ModuleLoader__.load({
     }
 
     /** Width of `text` in the title's own font, so the editor can hug the glyphs. */
-    function measureText(el, text) {
+    function measureText(el, text, font) {
       const cs = window.getComputedStyle(el)
-      const fontSize = parseFloat(cs.fontSize) || 13
-      const lineHeight = parseFloat(cs.lineHeight) || Math.round(fontSize * 1.35)
+      const size = font !== undefined && font !== null ? font.size : parseFloat(cs.fontSize) || 13
+      const weight = font !== undefined && font !== null ? font.weight : cs.fontWeight
+      const family = font !== undefined && font !== null ? font.family : cs.fontFamily
+      const lineHeight = font !== undefined && font !== null ? font.lineHeight : parseFloat(cs.lineHeight) || Math.round(size * 1.35)
       let width = 0
       try {
         if (!measureText.canvas) measureText.canvas = document.createElement('canvas')
         const context = measureText.canvas.getContext('2d')
-        context.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
+        context.font = `${cs.fontStyle} ${weight} ${size}px ${family}`
         width = context.measureText(text).width
       } catch {
         width = 0
       }
-      if (!width) width = text.length * fontSize * 0.62
+      if (!width) width = text.length * size * 0.62
       const spacing = parseFloat(cs.letterSpacing)
       if (Number.isFinite(spacing) && spacing !== 0) width += spacing * Math.max(text.length - 1, 0)
       return { width, height: lineHeight, padLeft: parseFloat(cs.paddingLeft) || 0, padTop: parseFloat(cs.paddingTop) || 0 }
@@ -320,12 +318,32 @@ window.__ModuleLoader__.load({
      * the box cannot spill onto its neighbours.
      * @returns {{ left: number, top: number, width: number, height: number, padY: number }}
      */
+    /**
+     * The font the pill renders in.
+     *
+     * The reference pill uses the product's strong 14px token (weight 600, 22px line).
+     * The DSH crumb is 14px/500/20px, so copying it makes the pill look lighter and
+     * tighter than the reference. Take the size and weight from the token but keep the
+     * host family, and measure with exactly that font so the width still fits.
+     */
+    function pillFont(titleEl) {
+      const cs = typeof window !== 'undefined' && typeof window.getComputedStyle === 'function' ? window.getComputedStyle(titleEl) : null
+      const family = cs === null ? 'inherit' : cs.fontFamily
+      const strong = cs === null ? '' : String(cs.getPropertyValue('--dsw-font-s-strong-14') || '').trim()
+      if (strong.length > 0) return { size: 14, weight: '600', lineHeight: 22, family }
+      return { size: 14, weight: '600', lineHeight: 22, family }
+    }
+
     function boxOf(titleEl, title, surface) {
       const rect = titleEl.getBoundingClientRect()
-      const metrics = measureText(titleEl, title)
-      const contentHeight = Math.max(14, Math.round(metrics.height))
+      const font = pillFont(titleEl)
+      const metrics = measureText(titleEl, title, font)
+      const contentHeight = Math.max(14, Math.round(font.lineHeight))
+      // The product pill is 40px tall over a 22px line with a 1px border, so the
+      // padding is (40 - 22) / 2 - 1 = 8. Counting the border is what makes it land
+      // on 40 instead of 42.
       const target = surface === 'header' ? 40 : contentHeight + 8
-      const padY = Math.max(2, Math.min(12, Math.round((target - contentHeight) / 2)))
+      const padY = Math.max(2, Math.min(12, Math.round((target - contentHeight) / 2) - BORDER))
       const contentLeft = rect.left + metrics.padLeft
       const contentTop = rect.top + metrics.padTop
       const room = typeof window === 'undefined' ? 0 : window.innerWidth - (contentLeft - (BORDER + PAD_X)) - 8
@@ -391,10 +409,13 @@ window.__ModuleLoader__.load({
       wrap.style.top = `${box.top}px`
       wrap.style.width = `${box.width}px`
       wrap.style.height = `${box.height}px`
-      wrap.style.borderRadius = `${Math.round(Math.min(22, box.height / 2))}px`
+      const font = pillFont(titleEl)
+      wrap.style.borderRadius = box.height >= 40 ? '22px' : `${Math.round(Math.min(22, box.height / 2))}px`
       wrap.style.padding = `${box.padY}px ${PAD_X}px`
-      copyFont(titleEl, wrap)
-      wrap.style.lineHeight = `${box.contentHeight}px`
+      wrap.style.fontFamily = font.family
+      wrap.style.fontSize = `${font.size}px`
+      wrap.style.fontWeight = font.weight
+      wrap.style.lineHeight = `${font.lineHeight}px`
 
       const input = document.createElement('input')
       input.className = 'dsr-input'
