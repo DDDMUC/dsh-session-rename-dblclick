@@ -427,6 +427,31 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /**
+     * The reference brand blue, exactly as the demo paints it.
+     *
+     * Note what is NOT used here: --dsw-alias-brand-primary. Both themes name that token
+     * and give it different values - the demo maps it to its deepseek blue (#3964fe light,
+     * #5686fe dark), while DSH maps it to a neutral (rgb(15, 17, 21)) because black is the
+     * accent of its shell. Copying the token name therefore paints a black ring in DSH.
+     */
+    const REFERENCE_BRAND = { light: '#3964fe', dark: '#5686fe' }
+
+    /** Rough luminance of a computed colour, or null when it cannot be parsed. */
+    function luminanceOf(color) {
+      const match = /rgba?\(([^)]+)\)/.exec(String(color))
+      if (match === null) return null
+      const parts = match[1].split(',').map((value) => parseFloat(value))
+      if (parts.length < 3) return null
+      return (0.299 * parts[0] + 0.587 * parts[1] + 0.114 * parts[2]) / 255
+    }
+
+    /** Which reference blue to use: the label colour tells us whether the theme is dark. */
+    function referenceBrand(titleEl) {
+      const label = luminanceOf(resolveToken(titleEl, '--dsw-alias-label-primary', 'color', ''))
+      return label !== null && label > 0.5 ? REFERENCE_BRAND.dark : REFERENCE_BRAND.light
+    }
+
     function openEditor(target) {
       finish()
       const { sessionId, titleEl } = target
@@ -456,6 +481,7 @@ window.__ModuleLoader__.load({
         padY: box.padY,
         contentHeight: box.contentHeight,
         font: pillFont(titleEl),
+        brand,
         title: rect.width + 'x' + rect.height,
       })
 
@@ -470,7 +496,7 @@ window.__ModuleLoader__.load({
       // The reference field is a filled input whose focus ring is an INSET shadow, not a
       // border: Input.module.css paints `inset 0 0 0 1px var(--dsw-alias-brand-primary)`.
       // Same here, so the ring hugs the pill instead of growing it by a pixel.
-      const brand = resolveToken(titleEl, '--dsw-alias-brand-primary', 'borderColor', '#4d6bfe')
+      const brand = referenceBrand(titleEl)
       wrap.style.borderColor = 'transparent'
       wrap.style.background = resolveToken(titleEl, '--dsw-specific-input-major', 'backgroundColor', 'transparent')
       wrap.style.boxShadow = `inset 0 0 0 1px ${brand}`
