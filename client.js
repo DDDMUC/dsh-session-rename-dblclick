@@ -51,15 +51,35 @@ window.__ModuleLoader__.load({
       const style = document.createElement('style')
       style.setAttribute(STYLE_ATTR, '')
       style.textContent = `
-        .dsr-wrap { position: fixed; z-index: 2147483000; box-sizing: border-box; }
+        /*
+         * One box, and the text never moves into it: the box is positioned by
+         * NEGATIVE offsets equal to its own padding + border, so the glyphs stay
+         * exactly where the title drew them. No size or position change on enter
+         * or leave - only the border and shadow appear.
+         */
+        .dsr-wrap {
+          position: fixed; z-index: 2147483000; box-sizing: border-box;
+          display: flex; align-items: center;
+          margin: 0; border: 1px solid transparent; background: transparent;
+          box-shadow: none; transition: none;
+        }
+        .dsr-wrap[data-editing='true'] {
+          border-color: color-mix(in srgb, currentColor 14%, transparent);
+          background: color-mix(in srgb, currentColor 3%, transparent);
+          box-shadow: 0 4px 12px 0 rgba(0, 0, 0, .02), 0 2px 8px 0 rgba(0, 0, 0, .04);
+        }
+        @media (prefers-color-scheme: dark) {
+          .dsr-wrap[data-editing='true'] {
+            border-color: color-mix(in srgb, currentColor 26%, transparent);
+            background: color-mix(in srgb, currentColor 7%, transparent);
+            box-shadow: none;
+          }
+        }
         .dsr-input {
-          display: block; width: 100%; height: 100%; box-sizing: border-box;
-          margin: 0; padding: 0 3px; border-radius: 4px;
-          border: 1px solid var(--dsw-alias-brand-primary, #4d6bfe);
-          background: var(--dsw-alias-bg-overlay, #ffffff);
-          color: var(--dsw-alias-label-primary, #1f2023);
-          outline: none; line-height: normal;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+          display: block; width: 100%; box-sizing: border-box;
+          margin: 0; padding: 0; border: 0; outline: none;
+          background: transparent; color: inherit; font: inherit;
+          letter-spacing: inherit; text-align: inherit;
         }
         .dsr-toast {
           position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
@@ -275,21 +295,41 @@ window.__ModuleLoader__.load({
       const rect = titleEl.getBoundingClientRect()
       if (rect.width < 8 || rect.height < 8) return
 
-      // Hug the text: the editor is the glyph box plus a hairline frame, not the
-      // padded row or header box the title happens to live in.
+      // The box is the title's line box plus its own padding, drawn OUTSIDE the
+      // glyphs: border + padding are subtracted from the anchor, so the text does
+      // not shift by a pixel when the box appears. Idle states draw nothing (no
+      // permanent frame around a plain title); only the editing state is visible.
+      const BORDER = 1
+      const PAD_X = 12
       const metrics = measureText(titleEl, title)
-      const boxHeight = Math.round(metrics.height + 2)
-      const boxTop = Math.round(rect.top + (rect.height - boxHeight) / 2)
-      const boxLeft = Math.round(rect.left + metrics.padLeft - 1)
+      const contentHeight = Math.max(14, Math.round(rect.height || metrics.height))
+      // 8px of vertical padding is the product shape: a 40px box over a 22px line.
+      // A compact surface (a sidebar row is ~28px tall) keeps its box inside the row
+      // instead of spilling over its neighbours; the offset below always equals the
+      // padding, so the text does not move in either case.
+      const padY = contentHeight >= 22 ? 8 : contentHeight >= 18 ? 4 : 3
+      const boxLeft = Math.round(rect.left + metrics.padLeft - (BORDER + PAD_X))
+      const boxTop = Math.round(rect.top - (BORDER + padY))
+      const boxHeight = contentHeight + 2 * (BORDER + padY)
       const room = typeof window === 'undefined' ? 0 : window.innerWidth - boxLeft - 8
-      const wanted = Math.min(Math.max(metrics.width + 8, 56), Math.max(rect.width, 56) + 40)
-      const boxWidth = Math.round(room > 56 ? Math.min(wanted, room) : wanted)
+      // The input must be wide enough for the glyphs (its default ~20ch would jump
+      // the box wider than the text); +2px leaves the caret somewhere to sit.
+      const wantedContent = Math.max(metrics.width + 2, 24)
+      const maxContent = Math.max(24, room - 2 * (BORDER + PAD_X))
+      const contentWidth = Math.round(Math.min(wantedContent, maxContent))
+      const boxWidth = contentWidth + 2 * (BORDER + PAD_X)
 
       const wrap = document.createElement('div')
       wrap.className = 'dsr-wrap'
+      wrap.dataset.editing = 'true'
       wrap.style.left = `${boxLeft}px`
       wrap.style.top = `${boxTop}px`
       wrap.style.width = `${boxWidth}px`
+      wrap.style.height = `${boxHeight}px`
+      wrap.style.borderRadius = `${Math.round(Math.min(22, boxHeight / 2))}px`
+      wrap.style.padding = `${padY}px ${PAD_X}px`
+      copyFont(titleEl, wrap)
+      wrap.style.lineHeight = `${contentHeight}px`
       wrap.style.height = `${boxHeight}px`
 
       const input = document.createElement('input')
@@ -299,7 +339,6 @@ window.__ModuleLoader__.load({
       input.value = title
       input.spellcheck = false
       input.setAttribute('aria-label', '重命名会话')
-      copyFont(titleEl, input)
       wrap.appendChild(input)
 
       const previousVisibility = titleEl.style.visibility
