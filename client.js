@@ -98,6 +98,25 @@ window.__ModuleLoader__.load({
       return node.parentElement || null
     }
 
+    /**
+     * The Session a sidebar row names.
+     *
+     * `data-row-key` first: current builds render the row as
+     * `<div role="treeitem" data-row-key="session:<id>">` with an onClick. The
+     * anchor this module used to require no longer exists, which made every
+     * double-click a silent no-op. The anchor stays as a fallback.
+     * @param {Element} row
+     * @returns {string | null}
+     */
+    function sessionIdOfRow(row) {
+      const key = row && typeof row.getAttribute === 'function' ? row.getAttribute('data-row-key') : null
+      if (typeof key === 'string' && key.startsWith('session:') && key.length > 'session:'.length) {
+        return key.slice('session:'.length)
+      }
+      const link = row && typeof row.querySelector === 'function' ? row.querySelector('a[href*="/session/"]') : null
+      return sessionIdFromHref(link && link.getAttribute('href'))
+    }
+
     function sessionIdFromHref(href) {
       const match = href ? SESSION_IN_PATH.exec(href) : null
       return match ? match[1] : null
@@ -116,17 +135,19 @@ window.__ModuleLoader__.load({
       // header breadcrumb: the title of the Session this page shows
       const crumb = el.closest('[class*="_crumbCurrent"]')
       if (crumb) {
-        const sessionId = sessionIdFromHref(String(location.hash || ''))
+        const sessionId = sessionIdFromHref(String(location.href || ''))
         return sessionId ? { sessionId, titleEl: crumb } : null
       }
 
-      // sidebar row: the row's own link carries the Session id
-      const row = el.closest('[class*="_sessionRow"]')
+      // sidebar row: `data-row-key="session:<id>"` is the shipped contract.
+      // The row is a <div role="treeitem" data-row-key=...> with an onClick, not
+      // a link - requiring an anchor here matched nothing in current builds, so
+      // every double-click was a silent no-op.
+      const row = el.closest('[class*="_sessionRow"], [data-row-key^="session:"]')
       if (!row) return null
       const titleEl = el.closest('[class*="_title"]') || row.querySelector('[class*="_title"]')
       if (!titleEl || !row.contains(titleEl)) return null
-      const link = row.querySelector('a[href*="/session/"]')
-      const sessionId = sessionIdFromHref(link && link.getAttribute('href'))
+      const sessionId = sessionIdOfRow(row)
       return sessionId ? { sessionId, titleEl } : null
     }
 
@@ -350,6 +371,6 @@ window.__ModuleLoader__.load({
 
     }
 
-    return { apply }
+    return { apply, __resolveTarget: resolveTarget, __sessionIdOfRow: sessionIdOfRow }
   },
 })
