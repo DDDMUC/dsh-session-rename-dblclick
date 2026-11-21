@@ -328,10 +328,7 @@ window.__ModuleLoader__.load({
      */
     function pillFont(titleEl) {
       const cs = typeof window !== 'undefined' && typeof window.getComputedStyle === 'function' ? window.getComputedStyle(titleEl) : null
-      const family = cs === null ? 'inherit' : cs.fontFamily
-      const strong = cs === null ? '' : String(cs.getPropertyValue('--dsw-font-s-strong-14') || '').trim()
-      if (strong.length > 0) return { size: 14, weight: '600', lineHeight: 22, family }
-      return { size: 14, weight: '600', lineHeight: 22, family }
+      return { size: 14, weight: '600', lineHeight: 22, family: cs === null ? 'inherit' : cs.fontFamily }
     }
 
     function boxOf(titleEl, title, surface) {
@@ -378,7 +375,9 @@ window.__ModuleLoader__.load({
       ringEl.style.top = `${box.top}px`
       ringEl.style.width = `${box.width}px`
       ringEl.style.height = `${box.height}px`
-      ringEl.style.borderRadius = `${Math.round(Math.min(22, box.height / 2))}px`
+      ringEl.style.borderRadius = box.height >= 40 ? '22px' : `${Math.round(Math.min(22, box.height / 2))}px`
+      ringEl.style.borderColor = tokenOf(titleEl, '--dsw-alias-border-l2', 'color-mix(in srgb, currentColor 16%, transparent)')
+      ringEl.style.boxShadow = tokenOf(titleEl, '--dsw-shadow-lv2', '0 2px 8px 0 rgba(0, 0, 0, .04)')
       if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
         ringEl.style.color = window.getComputedStyle(titleEl).color
       }
@@ -391,6 +390,25 @@ window.__ModuleLoader__.load({
       if (ringEl !== null) ringEl.style.display = 'none'
     }
 
+    /**
+     * A theme token resolved where it really applies.
+     *
+     * The ring and the editor are appended to <body>, i.e. OUTSIDE the element that
+     * carries the DSH theme variables, so a `var(--dsw-*)` inside their stylesheet
+     * resolves to nothing and silently falls back to a hand-picked colour. Read the
+     * token from the title itself (inheritance resolves it there) and pin the result
+     * inline.
+     */
+    function tokenOf(el, name, fallback) {
+      if (typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return fallback
+      try {
+        const value = String(window.getComputedStyle(el).getPropertyValue(name) || '').trim()
+        return value.length > 0 ? value : fallback
+      } catch (error) {
+        return fallback
+      }
+    }
+
     function openEditor(target) {
       finish()
       const { sessionId, titleEl } = target
@@ -401,6 +419,27 @@ window.__ModuleLoader__.load({
       // The hover ring has just drawn this exact pill, so entering the editor is a
       // change of colour, not of geometry.
       const box = boxOf(titleEl, title, target.surface)
+      // A double click (or a drag) leaves a text selection on the title; the editor
+      // shows its own selection, so drop the old one instead of stacking two bands.
+      if (typeof window !== 'undefined' && typeof window.getSelection === 'function') {
+        const selection = window.getSelection()
+        if (selection !== null && selection !== undefined && typeof selection.removeAllRanges === 'function') {
+          selection.removeAllRanges()
+        }
+      }
+      // One line of arithmetic in the console: if the pill ever looks wrong again, the
+      // numbers are already printed instead of guessed at.
+      console.info('[dsh-session-rename-dblclick] box', {
+        surface: target.surface,
+        left: box.left,
+        top: box.top,
+        width: box.width,
+        height: box.height,
+        padY: box.padY,
+        contentHeight: box.contentHeight,
+        font: pillFont(titleEl),
+        title: rect.width + 'x' + rect.height,
+      })
 
       const wrap = document.createElement('div')
       wrap.className = 'dsr-wrap'
@@ -410,6 +449,9 @@ window.__ModuleLoader__.load({
       wrap.style.width = `${box.width}px`
       wrap.style.height = `${box.height}px`
       const font = pillFont(titleEl)
+      wrap.style.borderColor = tokenOf(titleEl, '--dsw-alias-brand-primary', '#4d6bfe')
+      wrap.style.background = tokenOf(titleEl, '--dsw-specific-input-major', tokenOf(titleEl, '--dsw-alias-bg-overlay', 'transparent'))
+      wrap.style.boxShadow = tokenOf(titleEl, '--dsw-shadow-lv2', '0 2px 8px 0 rgba(0, 0, 0, .04)')
       wrap.style.borderRadius = box.height >= 40 ? '22px' : `${Math.round(Math.min(22, box.height / 2))}px`
       wrap.style.padding = `${box.padY}px ${PAD_X}px`
       wrap.style.fontFamily = font.family
@@ -509,7 +551,14 @@ window.__ModuleLoader__.load({
         lastClick = null
         return
       }
-      if (target.surface === 'header') return
+      if (target.surface === 'header') {
+        // The click already opened the editor. Swallow the double click anyway:
+        // otherwise the browser word-selects the title and leaves a blue band on the
+        // text, which is most of what made the header look broken.
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
       event.preventDefault()
       event.stopPropagation()
       openEditor(target)
