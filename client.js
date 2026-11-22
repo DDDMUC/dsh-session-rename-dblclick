@@ -602,10 +602,10 @@ window.__ModuleLoader__.load({
     // whether a second is coming, so the first click is held briefly: if another arrives
     // within HOLD_MS both are swallowed (the product's own dblclick still opens its
     // dialog), otherwise the click is replayed so the session opens as usual.
-    // Fixed at the request's value: half a second is longer than a normal double click,
-    // so the first click of a pair is never replayed. A single click on another row's
-    // title therefore navigates after this delay.
-    const HOLD_MS = 500
+    // Fixed at the request's value (2000ms): any double click, however slow, finishes
+    // inside the hold, so the first click of a pair is never replayed. A single click on
+    // another row's title therefore navigates after this delay.
+    const HOLD_MS = 2000
     let heldClick = null
     let replaying = false
     let lastReplay = null
