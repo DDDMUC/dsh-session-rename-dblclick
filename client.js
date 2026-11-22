@@ -606,7 +606,7 @@ window.__ModuleLoader__.load({
     // first click of a pair is never replayed. A single click on another row's title
     // therefore navigates after this delay; a slower pair is undone by the dblclick
     // handler below, which opens the previous session again.
-    const HOLD_MS = 50
+    const HOLD_MS = 90
     let heldClick = null
     let replaying = false
     let lastReplay = null
